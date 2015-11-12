@@ -1,0 +1,25 @@
+<?php
+
+function imagefield_exact_dimensions_schema() {
+  $schema['imagefield_exact_dimensions'] = array(
+    'description' => t('Require exact dimensions for Image fields.'),
+    'fields' => array(
+      'fid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE
+      ),
+      'dimensions' => array(
+        'type' => 'varchar',
+        'length' => 512,
+        'not null' => TRUE,
+        'default' => ''
+      )
+    ),
+    'primary key' => array('fid'),
+    'foreign keys' => array(
+      'fid' => array('field_config' => 'id')
+    )
+  );
+  return $schema;
+}

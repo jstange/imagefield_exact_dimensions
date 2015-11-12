@@ -1,0 +1,153 @@
+<?php
+
+/**
+ * Implements hook_help().
+ *
+ * Displays help and module information.
+ *
+ * @param path 
+ *   Which path of the site we're using to display help
+ * @param arg 
+ *   Array that holds the current path as returned from arg() function
+ */
+function imagefield_exact_dimensions_help($path, $arg) {
+  switch ($path) {
+    case "admin/help#imagefield_exact_dimensions":
+      return '<p>' . t("Allow a content type to require one of a list of exact image dimensions in Image fields") . '</p>';
+      break;
+  }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function imagefield_exact_dimensions_menu() {
+  $items = array();
+
+  $items['admin/config/content/imagefield_exact_dimensions'] = array(
+    'title' => 'Imagefield Exact Dimensions',
+    'description' => 'Allow a content type to require one of a list of exact image dimensions in Image fields.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('imagefield_exact_dimensions_form'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function imagefield_exact_dimensions_form_alter(&$form, $form_state, $form_id) {
+  // Insert our extra fields into Image field edit forms
+  if($form_id == "field_ui_field_edit_form" &&
+      $form['#field']['module'] == "image" &&
+      $form['#field']['type'] == "image"){
+    $cur = _imagefield_exact_dimensions_get_dimensions($form['#field']['id']);
+    $form['instance']['settings']['exact_dimensions'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Require exact dimensions'),
+      '#default_value' => implode(", ", $cur),
+      '#weight' => 4.3,
+      '#size' => 120,
+      '#maxlength' => 512,
+      '#description' => t('A comma-separated list of image dimensions expressed as WIDTHxHEIGHT (e.g. 640x480, 1024x768). If specified, attached images will be required to match one of these sets of dimensions exactly. This is in addition to falling within Maximum image resolution and Minimum image resolution.')
+    );
+    $form['#validate'][] = "imagefield_exact_dimensions_form_validate";
+    $form['#submit'][] = 'imagefield_exact_dimensions_form_submit';
+  } else {
+    // XXX mangle the help text to include the list of sizes configured
+    $form['#validate'][] = "imagefield_exact_dimensions_form_validate";
+  }
+}
+
+/**
+ * Return the list of valid dimensions for the given field, if any have been
+ * stored.
+ */
+function _imagefield_exact_dimensions_get_dimensions($fid){
+  $res = db_select('imagefield_exact_dimensions', 'd')
+    ->fields('d', array('dimensions'))
+    ->condition('fid', $fid)
+    ->execute()->fetchAll();
+  if(count($res) < 1){
+    return array();
+  }
+  return (preg_split("/\s*,\s*/", $res[0]->dimensions));
+}
+
+/**
+ * Save the exact_dimensions value for this field.
+ */
+function imagefield_exact_dimensions_form_submit($form, &$form_state){
+  if($form_state['build_info']['form_id'] == "field_ui_field_edit_form" &&
+      !empty($form_state['input']['instance']['settings']['exact_dimensions']) &&
+      !preg_match("/^\s+$/", $form_state['input']['instance']['settings']['exact_dimensions'])){
+    $cur = _imagefield_exact_dimensions_get_dimensions($form['#field']['id']);
+    $clean_val = implode(", ", preg_split("/\s*,\s*/", preg_replace("/\s*,\s*$/", "", $form_state['input']['instance']['settings']['exact_dimensions'])));
+    if(count($cur) > 0){
+      db_update('imagefield_exact_dimensions')->fields(array(
+        'dimensions' => $clean_val,
+      ))->condition('fid', $form['#field']['id'], '=')
+      ->execute();
+    } else{
+      db_insert('imagefield_exact_dimensions')->fields(array(
+        'fid' => $form['#field']['id'],
+        'dimensions' => $clean_val
+      ))->execute();
+    }
+  } else {
+//    dpm($form_state);
+  }
+}
+
+/**
+ * Implements validation from the Form API.
+ * 
+ * @param $form
+ *   A structured array containing the elements and properties of the form.
+ * @param $form_state
+ *   An array that stores information about the form's current state 
+ *   during processing.
+ */
+function imagefield_exact_dimensions_form_validate($form, &$form_state){
+  if($form_state['build_info']['form_id'] == "field_ui_field_edit_form" &&
+      !empty($form_state['input']['instance']['settings']['exact_dimensions']) &&
+      !preg_match("/^\s+$/", $form_state['input']['instance']['settings']['exact_dimensions'])){
+    if(!preg_match("/^\s*(?:\d+x\d+\s*,\s*)*\d+x\d+\s*$/", $form_state['input']['instance']['settings']['exact_dimensions'])){
+      form_set_error("exact_dimensions", t('"Require exact dimensions" must be a comma-separated list of image dimensions expressed as WIDTHxHEIGHT (e.g. 640x480, 1024x768) '.$form_state['input']['instance']['settings']['exact_dimensions']));
+    }
+  } else if(array_key_exists("field", $form_state)) {
+    foreach ($form_state['field'] as $field){
+      foreach ($field as $lang){
+	if(!array_key_exists("field", $lang) || !array_key_exists("id", $lang['field'])){
+	  continue;
+	}
+	$dims = _imagefield_exact_dimensions_get_dimensions($lang['field']['id']);
+	if(count($dims) > 0){
+	  $field_name = $lang['field']['field_name'];
+	  $pretty_name = $lang['instance']['label'];
+	  foreach ($form_state['input'][$field_name] as $input_lang){
+	    foreach ($input_lang as $image){
+	      if(!array_key_exists("width", $image)){
+		continue;
+	      }
+	      $matched = false;
+	      foreach ($dims as $dimension){
+		list($width, $height) = preg_split("/x/", $dimension);
+		if($width == $image['width'] && $height == $image['height']){
+		  $matched = true;
+		  break;
+		}
+	      }
+	      if(!$matched){
+		form_set_error($field_name, t('"'.$pretty_name.'" image is '.$image['width'].'x'.$image['height'].'. Must be one of the following resolutions: '.implode(", ", $dims)));
+	      }
+	    }
+	  }
+	}
+      }
+    }
+  }
+}

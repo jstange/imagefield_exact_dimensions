@@ -1,0 +1,7 @@
+name = Imagefield Exact Dimensions
+description = Allow a content type to require one of a list of exact image dimensions in Image fields.
+core = 7.x
+dependencies[] = image
+dependencies[] = field
+
+configure = admin/config/content/imagefield_exact_dimensions
