@@ -121,33 +121,47 @@ function imagefield_exact_dimensions_form_validate($form, &$form_state){
   } else if(array_key_exists("field", $form_state)) {
     foreach ($form_state['field'] as $field){
       foreach ($field as $lang){
-	if(!array_key_exists("field", $lang) || !array_key_exists("id", $lang['field'])){
-	  continue;
-	}
-	$dims = _imagefield_exact_dimensions_get_dimensions($lang['field']['id']);
-	if(count($dims) > 0){
-	  $field_name = $lang['field']['field_name'];
-	  $pretty_name = $lang['instance']['label'];
-	  foreach ($form_state['input'][$field_name] as $input_lang){
-	    foreach ($input_lang as $image){
-	      if(!array_key_exists("width", $image)){
-		continue;
-	      }
-	      $matched = false;
-	      foreach ($dims as $dimension){
-		list($width, $height) = preg_split("/x/", $dimension);
-		if($width == $image['width'] && $height == $image['height']){
-		  $matched = true;
-		  break;
-		}
-	      }
-	      if(!$matched){
-		form_set_error($field_name, t('"'.$pretty_name.'" image is '.$image['width'].'x'.$image['height'].'. Must be one of the following resolutions: '.implode(", ", $dims)));
-	      }
-	    }
-	  }
-	}
-      }
-    }
+        if(!array_key_exists("field", $lang) || !array_key_exists("id", $lang['field'])){
+          continue;
+        }
+        $dims = _imagefield_exact_dimensions_get_dimensions($lang['field']['id']);
+        $foundbad = false;
+        if(count($dims) > 0){
+          $field_name = $lang['field']['field_name'];
+          $pretty_name = $lang['instance']['label'];
+          foreach ($form_state['input'][$field_name] as $input_lang){
+            $slot = 1;
+            foreach ($input_lang as $image){
+              if(!array_key_exists("width", $image)){
+                continue;
+              }
+              $matched = false;
+              foreach ($dims as $dimension){
+                list($width, $height) = preg_split("/x/", $dimension);
+                if($width == $image['width'] && $height == $image['height']){
+                  $matched = true;
+                  break;
+                }
+              }
+              $slot++;
+              if(!$matched){
+                $filename = "image in slot $slot";
+                if($image['fid']){
+                  $file = file_load($image['fid']);
+                  if($file && $file->filename){
+                    $filename = $file->filename;
+                  }
+                }
+                drupal_set_message(t('<strong>'.$pretty_name.'</strong> image <strong>'.$filename.'</strong> is an invalid size, <strong>'.$image['width'].'x'.$image['height'].'</strong>.'), "error");
+                $foundbad = true;
+              }
+            }
+          }
+          if($foundbad){
+            form_set_error($field_name, t('Valid resolutions for field "'.$pretty_name.'": '.implode(", ", $dims)));
+          }
+        }
+      } // foreach ($field as $lang){
+    } // foreach ($form_state['field'] as $field)
   }
 }
